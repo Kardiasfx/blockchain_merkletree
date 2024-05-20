@@ -9,7 +9,7 @@ import java.util.*;
 //15 14 13 12 11 10 9 8
 
 
-public class Main {
+public class MerkleTreeExist {
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
         System.out.println("Input an integer n to generate 2^n numbers:");
@@ -17,21 +17,36 @@ public class Main {
         System.out.println("Input an integer seed to control the generation of the numbers:");
         int seed = sc.nextInt();
         // 生成 2^n 个数据，数组长度为 2^(n+1)-1
-        String[] merkleTree = getMerkleTree(n, seed);
+        System.out.println("Do you need to sort the numbers? If yes, input 1, else input 0(If you want to find a number not" +
+                "existing in the tree, input 1):");
+        int flag = sc.nextInt();
+        Integer[] integers = genIntegers(n, seed, flag);
+        String[] merkleTree = getMerkleTree(integers);
         System.out.println("Input a number recorded in the tree to show its location and verification:");
-        verifyExist(merkleTree, sc.nextInt());
-
+        int numberExist = sc.nextInt();
+        if (!verifyExist(merkleTree, numberExist)) {
+            Integer[] notExistEvidence = search(integers, numberExist);
+            verifyExist(merkleTree, notExistEvidence[0]);
+            verifyExist(merkleTree, notExistEvidence[1]);
+            if (numberExist < notExistEvidence[0]) System.out.println("Number " + numberExist + " was not found! " +
+                    "Because the number " + notExistEvidence[0] + " is the smallest number in the tree.");
+            else if (numberExist > notExistEvidence[1]) System.out.println("Number " + numberExist + " was not found! " +
+                    "Because the number " + notExistEvidence[1] + " is the biggest number in the tree.");
+            else System.out.println("Number " + numberExist + " was not found! Because the two numbers " + notExistEvidence[0]
+                        + " and " + notExistEvidence[1] + " are in the tree and they are next to each other.");
+        }
         sc.close();
     }
 
-    public static Integer[] genIntegers(int n, int seed) {
+    public static Integer[] genIntegers(int n, int seed, int flag) {
         Random random = new Random(seed);
         List<Integer> integers = new ArrayList<>((int) Math.pow(2, n)); // 2的n次方
         for (int i = 0; i < (int) Math.pow(2, n); i++) {
             int randomInt = random.nextInt();
-            System.out.println("random" + i + ":" + randomInt);
             integers.add(randomInt);
         }
+        if (flag == 1) Collections.sort(integers);
+        for (int i = 0; i < (int) Math.pow(2, n); i++) System.out.println("random number " + i + ": " + integers.get(i));
         return integers.toArray(new Integer[0]);
     }
 
@@ -55,13 +70,12 @@ public class Main {
         return hexString.toString();
     }
 
-    public static String[] getMerkleTree(int n, int seed) {
-        int dataLength = (int) Math.pow(2, n+1);
+    public static String[] getMerkleTree(Integer[] integers) {
+        int dataLength = 2 * integers.length;
         String[] merkleArray = new String[dataLength];
-        Integer[] arrayNumbers = genIntegers(n, seed);
-        for (int i = dataLength - 1, j = 0; i >= (int) Math.pow(2, n); i--, j++) {
+        for (int i = dataLength - 1, j = 0; i >= integers.length; i--, j++) {
             try {
-                merkleArray[i] = getHash(arrayNumbers[j].toString());
+                merkleArray[i] = getHash(integers[j].toString());
             } catch (NoSuchAlgorithmException e) {
                 throw new RuntimeException(e);
             }
@@ -80,18 +94,20 @@ public class Main {
         return merkleArray;
     }
 
-    public static void verifyExist(String[] merkleTree, int numberExist) {
+    public static boolean verifyExist(String[] merkleTree, int numberExist) {
         String rootHash = merkleTree[1];
 //        String[] path = new String[(int) Math.log(merkleTree.length)];
         List<String> path = new ArrayList<>();
         StringBuilder position = new StringBuilder();
+        int flag = 0;
         try {
             String hashExist = getHash(Integer.toString(numberExist));
             for (int i = merkleTree.length - 1; i >= merkleTree.length / 2; i--) {
                 int num = i;
                 while (hashExist.equals(merkleTree[i])) {
+                    flag = 1;
                     if (num == 1) {
-                        System.out.println("evidence, known roothash: " + rootHash);
+                        System.out.println("evidence, known root hash: " + rootHash);
                         break;
                     }
                     else if (num % 2 == 1) {
@@ -107,10 +123,19 @@ public class Main {
                     num /= 2;
                 }
             }
-            System.out.println("Number " + numberExist + " was found! Position(binary): " + position);
-            System.out.println("Things you will need to find the evidence: ");
-            for (String str : path) System.out.println(str);
-            System.out.println(verify(hashExist, position.toString(), path.toArray(new String[0]), rootHash));
+            if (flag == 1) {
+                System.out.println("Number " + numberExist + " was found! Position(binary): " + position);
+                System.out.println("Things you will need to find the evidence: ");
+                for (String str : path) System.out.println(str);
+                System.out.println("Existence of number " + numberExist + " :" +
+                        verify(hashExist, position.toString(), path.toArray(new String[0]), rootHash));
+                return true;
+            }
+            else {
+                System.out.println("Number " + numberExist + " was not found!");
+                return false;
+            }
+
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException(e);
         }
@@ -119,10 +144,10 @@ public class Main {
     public static boolean verify(String hashExist, String path, String[] givenData, String rootHash) {
         for (int i = givenData.length - 1; i >= 0; i--) {
             try {
-                if (path.endsWith("0")) {
+                if (path.endsWith("0")) { // evidence on the right
                     hashExist = getHash(hashExist + givenData[i]);
                 }
-                else {
+                else { // evidence on the left
                     hashExist = getHash(givenData[i] + hashExist);
                 }
                 path = path.substring(0, path.length() - 1);
@@ -131,6 +156,17 @@ public class Main {
             }
         }
         return hashExist.equals(rootHash);
+    }
+
+    public static Integer[] search(Integer[] nums, int target) {
+        int left = 0;
+        int right = nums.length - 1;
+        while (left <= right) {
+            int mid = (left + right) / 2;
+            if (nums[mid] > target) right = mid; else left = mid;
+            if (left == right - 1) return new Integer[] {nums[left], nums[right]};
+        }
+        return new Integer[] {left, right};
     }
 
 }
